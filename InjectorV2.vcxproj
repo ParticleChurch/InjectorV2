@@ -144,11 +144,13 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="app.cpp" />
     <ClCompile Include="HTTP.cpp" />
     <ClCompile Include="main.cpp" />
     <ClCompile Include="update.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="app.hpp" />
     <ClInclude Include="HTTP.hpp" />
     <ClInclude Include="update.hpp" />
   </ItemGroup>
