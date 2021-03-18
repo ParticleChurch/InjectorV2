@@ -50,7 +50,7 @@ void Update::deletePreviousVersion()
 
 Update::VersionCheckResult Update::versionCheck()
 {
-	return rand() % 2 ? VersionCheckResult::UpToDate : VersionCheckResult::NeedsUpdate;
+	return VersionCheckResult::UpToDate;// rand() % 2 ? VersionCheckResult::UpToDate : VersionCheckResult::NeedsUpdate;
 
 	/*
 	size_t bytesRead = 0;
