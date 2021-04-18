@@ -145,14 +145,25 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="app.cpp" />
+    <ClCompile Include="Encryption.cpp" />
     <ClCompile Include="HTTP.cpp" />
     <ClCompile Include="main.cpp" />
+    <ClCompile Include="ManualMapper.cpp" />
     <ClCompile Include="update.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="app.hpp" />
+    <ClInclude Include="Encryption.hpp" />
     <ClInclude Include="HTTP.hpp" />
+    <ClInclude Include="ManualMapper.hpp" />
+    <ClInclude Include="resource.h" />
     <ClInclude Include="update.hpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <ResourceCompile Include="InjectorV2.rc" />
+  </ItemGroup>
+  <ItemGroup>
+    <Image Include="Resources\favicon.ico" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

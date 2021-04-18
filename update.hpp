@@ -4,7 +4,8 @@
 #include <shlwapi.h>
 #include <fstream>
 
-#define INJECTOR_CURRENT_VERSION "2.0"
+#define INJECTOR_CURRENT_VERSION "1.6"
+#define INJECTOR_CURRENT_VERSION_STRLEN 3
 
 namespace Update
 {
@@ -35,6 +36,7 @@ namespace Update
 		Error,
 	};
 
+	extern std::string GenerateTempFileName(std::string dir);
 	extern void deletePreviousVersion();
 	extern VersionCheckResult versionCheck();
 	extern char* downloadLatestVersion(size_t* bytesRead);

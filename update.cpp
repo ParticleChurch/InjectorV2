@@ -1,4 +1,6 @@
 #include "update.hpp"
+#include <iostream>
+
 
 char getRandomChar()
 {
@@ -13,7 +15,7 @@ char getRandomChar()
 		return '0' + pick - 26 - 26;
 }
 
-std::string GenerateTempFileName(std::string dir)
+std::string Update::GenerateTempFileName(std::string dir)
 {
 	std::string out = "";
 
@@ -38,23 +40,17 @@ namespace Update
 void Update::deletePreviousVersion()
 {
 	if (LastTempFileFullPath.length() <= 3) return;
-	DeleteFileA(LastTempFileFullPath.c_str());
-
-	auto f = std::ofstream("out.log", std::ios::out | std::ios::app);
-	f.write("just deleted: ", sizeof("just deleted: "));
-	f.write(LastTempFileFullPath.c_str(), LastTempFileFullPath.length() + 1);
-	f.write("\n", 1);
-	f.flush();
-	f.close();
+	size_t attempts = 0;
+	while (!DeleteFileA(LastTempFileFullPath.c_str()) && ++attempts < 5)
+	{
+		Sleep(1000);
+	}
 }
 
 Update::VersionCheckResult Update::versionCheck()
 {
-	return VersionCheckResult::UpToDate;// rand() % 2 ? VersionCheckResult::UpToDate : VersionCheckResult::NeedsUpdate;
-
-	/*
 	size_t bytesRead = 0;
-	char* result = HTTP::GET("https://www.a4g4.com/API/injectorVersion.php", &bytesRead);
+	char* result = HTTP::GET("https://www.a4g4.com/API/injector/version.php", &bytesRead);
 	if (!result) return VersionCheckResult::Error;
 
 	// make sure that the server responded with a real version instead of, say, an HTTP 404 page
@@ -63,20 +59,21 @@ Update::VersionCheckResult Update::versionCheck()
 		if (x <= 0.f)
 			return VersionCheckResult::Error;
 	}
-	catch (std::exception& _)
+	catch (std::exception&)
 	{
 		return VersionCheckResult::Error;
 	}
 
-	if (strcmp(INJECTOR_CURRENT_VERSION, result) == 0)
-		return VersionCheckResult::UpToDate;
-	else
+	if (INJECTOR_CURRENT_VERSION_STRLEN != bytesRead || strncmp(INJECTOR_CURRENT_VERSION, result, INJECTOR_CURRENT_VERSION_STRLEN))
 		return VersionCheckResult::NeedsUpdate;
-	*/
+	else
+		return VersionCheckResult::UpToDate;
 }
 
 char* Update::downloadLatestVersion(size_t* bytesRead)
 {
+	return HTTP::GET("https://www.a4g4.com/API/injector/download.php", bytesRead);
+	/*
 	auto file = std::ifstream(
 		Directory + "\\" + FileName,
 		std::ios::in | std::ios::binary | std::ifstream::ate
@@ -89,6 +86,7 @@ char* Update::downloadLatestVersion(size_t* bytesRead)
 	file.read(out, fileSize);
 
 	return out;
+	*/
 }
 
 bool Update::renameMyself(std::string newName)
