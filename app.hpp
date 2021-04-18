@@ -12,8 +12,8 @@
 #include "ManualMapper.hpp"
 #include "Encryption.hpp"
 #define TIME_POINT std::chrono::steady_clock::time_point
-#define TIME_NOW() std::chrono::steady_clock::now()
-#define TIME_DIFF(after, before) (std::chrono::duration_cast<std::chrono::microseconds>((after) - (before)).count() / (double)1e+6);
+#define TIME_NOW() (std::chrono::steady_clock::now())
+#define TIME_DIFF(after, before) (std::chrono::duration_cast<std::chrono::microseconds>((after) - (before)).count() / (double)1e+6)
 #define ERROR_STR(context, code) (std::to_string((int)(context)) + "-" + std::to_string((int)(code)) + "v" + std::string(INJECTOR_CURRENT_VERSION))
 
 class InjectorApp : public wxApp
@@ -83,6 +83,7 @@ public:
         Step("Downloading Latest DLL Version"),
         Step("Decrypting and Injecting")
     };
+    MainWorker* worker;
 
     struct {
         bool Dragging = false;

@@ -1,4 +1,33 @@
 #include "app.hpp"
+#include "shlobj_core.h"
+#include "resource.h"
+
+bool HaveAdminRights()
+{
+    HANDLE proc;
+    HANDLE snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+    DWORD myPID = GetCurrentProcessId();
+    bool openedProcess = false;
+
+    PROCESSENTRY32 entry{};
+    entry.dwSize = sizeof(entry);
+    do
+    {
+        if (myPID != entry.th32ProcessID)
+        {
+            proc = OpenProcess(PROCESS_ALL_ACCESS, false, entry.th32ProcessID);
+            if (proc != 0)
+            {
+                openedProcess = true;
+                CloseHandle(proc);
+            }
+        }
+    } while (!openedProcess && Process32Next(snapshot, &entry));
+    CloseHandle(snapshot);
+
+    return openedProcess;
+}
+
 
 std::vector<std::string> CSGODLLs{
     "csgo.exe",
@@ -21,6 +50,11 @@ std::vector<std::string> CSGODLLs{
 bool InjectorApp::OnInit()
 {
     MainFrame* f = new MainFrame();
+    HICON hIconSmall = (HICON)LoadImage(GetModuleHandle(NULL), MAKEINTRESOURCE(IDI_ICON1), IMAGE_ICON, 16, 16, 0);
+    HICON hIconLarge = (HICON)LoadImage(GetModuleHandle(NULL), MAKEINTRESOURCE(IDI_ICON1), IMAGE_ICON, 256, 256, 0);
+    SendMessage(f->GetHandle(), WM_SETICON, ICON_SMALL, (LPARAM)hIconSmall);
+    SendMessage(f->GetHandle(), WM_SETICON, ICON_BIG, (LPARAM)hIconLarge);
+
     f->Show(true);
     bool worked = false;
     if (this->argc >= 2)
@@ -321,16 +355,32 @@ void* MainWorker::Entry()
     }
 
     p->Steps[MainFrame::StepCount - 1].State = "Success! Closing in 3...";
-    Sleep(1000);
+
+    TIME_POINT before = TIME_NOW();
+    while (TIME_DIFF(TIME_NOW(), before) < 1)
+    {
+        Sleep(1);
+        if (this->TestDestroy()) return this;
+    }
+
     p->Steps[MainFrame::StepCount - 1].State = "Success! Closing in 2...";
-    Sleep(1000);
+
+    while (TIME_DIFF(TIME_NOW(), before) < 2)
+    {
+        Sleep(1);
+        if (this->TestDestroy()) return this;
+    }
+
     p->Steps[MainFrame::StepCount - 1].State = "Success! Closing in 1...";
 
+    while (TIME_DIFF(TIME_NOW(), before) < 3)
+    {
+        Sleep(1);
+        if (this->TestDestroy()) return this;
+    }
+
     p->repainter->Delete();
-
-    Sleep(1000);
     std::exit(0);
-
     return this;
 }
 
@@ -338,12 +388,20 @@ bool MainFrame::work(std::string argv)
 {
     if (!Update::init(argv)) return false;
 
+    if (!HaveAdminRights())
+    {
+        this->Show(false);
+        HINSTANCE result = ShellExecuteA(NULL, "runas", Update::FileName.c_str(), "", Update::Directory.c_str(), SW_HIDE);
+        this->Exit();
+        std::exit(0);
+    }
+
     this->Steps[0].handler = [](MainFrame* self) { return self->HandleInjectorUpdateStep(); };
     this->Steps[1].handler = [](MainFrame* self) { return self->HandleFindCSGOStep(); };
     this->Steps[2].handler = [](MainFrame* self) { return self->HandleDownloadStep(); };
     this->Steps[3].handler = [](MainFrame* self) { return self->HandleInjectStep(); };
 
-    auto worker = new MainWorker(this);
+    this->worker = new MainWorker(this);
     worker->Run();
     return true;
 }
@@ -396,19 +454,51 @@ bool MainFrame::HandleInjectorUpdateStep()
     return true;
 }
 
+inline bool ends_with(std::string const& value, std::string const& ending)
+{
+    if (ending.size() > value.size()) return false;
+    return std::equal(ending.rbegin(), ending.rend(), value.rbegin());
+}
+
 bool processIsCSGO(HANDLE hProcess)
 {
     if (!hProcess) return false;
 
-    wchar_t _FileName[MAX_PATH + 1];
-    GetModuleFileNameEx(hProcess, 0, _FileName, MAX_PATH);
-    std::wstring FileName(_FileName);
-
-    if (FileName.length() < strlen("csgo.exe")) return false;
-    if (FileName.substr(FileName.size() - strlen("csgo.exe")) != L"csgo.exe") return false;
-    return true;
+    char _FileName[MAX_PATH + 1];
+    GetProcessImageFileNameA(hProcess, _FileName, MAX_PATH);
+    std::string FileName(_FileName);
+    return ends_with(FileName, "csgo.exe");
 }
 
+
+#include <iostream>
+void CreateConsole()
+{
+    if (!AttachConsole(ATTACH_PARENT_PROCESS) && !AllocConsole()) {
+        return;
+    }
+
+    // std::cout, std::clog, std::cerr, std::cin
+    FILE* fDummy;
+    freopen_s(&fDummy, "CONOUT$", "w", stdout);
+    freopen_s(&fDummy, "CONOUT$", "w", stderr);
+    freopen_s(&fDummy, "CONIN$", "r", stdin);
+    std::cout.clear();
+    std::clog.clear();
+    std::cerr.clear();
+    std::cin.clear();
+
+    // std::wcout, std::wclog, std::wcerr, std::wcin
+    HANDLE hConOut = CreateFile(L"CONOUT$", GENERIC_READ | GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+    HANDLE hConIn = CreateFile(L"CONIN$", GENERIC_READ | GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+    SetStdHandle(STD_OUTPUT_HANDLE, hConOut);
+    SetStdHandle(STD_ERROR_HANDLE, hConOut);
+    SetStdHandle(STD_INPUT_HANDLE, hConIn);
+    std::wcout.clear();
+    std::wclog.clear();
+    std::wcerr.clear();
+    std::wcin.clear();
+}
 HANDLE getCSGO()
 {
     HANDLE proc;
@@ -421,6 +511,7 @@ HANDLE getCSGO()
         proc = OpenProcess(PROCESS_ALL_ACCESS, false, entry.th32ProcessID);
         if (processIsCSGO(proc))
             return proc;
+        CloseHandle(proc);
     } while (Process32Next(snapshot, &entry));
     CloseHandle(snapshot);
 
@@ -431,7 +522,7 @@ bool csgoIsInitialized(HANDLE csgo, DWORD pid, int* totalDllsToLoad, int* numDll
 {
     *totalDllsToLoad = CSGODLLs.size();
     *numDllsLoaded = 0;
-
+    /*
     bool WindowOpen = false;
     {
         HWND hCurWnd = nullptr;
@@ -449,7 +540,7 @@ bool csgoIsInitialized(HANDLE csgo, DWORD pid, int* totalDllsToLoad, int* numDll
     }
     if (!WindowOpen)
         return false;
-
+    */
     bool allModulesLoaded = true;
     {
         HANDLE snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPMODULE | TH32CS_SNAPMODULE32, pid);
@@ -461,7 +552,7 @@ bool csgoIsInitialized(HANDLE csgo, DWORD pid, int* totalDllsToLoad, int* numDll
             for (int i = 0; i < *totalDllsToLoad; i++)
             {
                 if (CSGODLLs.at(i) == moduleEntry.szModule)
-                    *numDllsLoaded++;
+                    (*numDllsLoaded)++;
             }
         } while (Module32Next(snapshot, &moduleEntry));
         CloseHandle(snapshot);
@@ -528,7 +619,7 @@ bool MainFrame::HandleDownloadStep()
 
     size_t bytesRead = 0;
     s->State = "Downloading...";
-    char* result = HTTP::GET("https://www.a4g4.com/API/dll/download2.php", &bytesRead);
+    char* result = HTTP::GET("https://www.a4g4.com/API/dll/download.php", &bytesRead);
     if (!result || bytesRead < 10000)
     {
         s->State = "FAILED - Check your firewall. " + ERROR_STR(1,1);
@@ -603,6 +694,7 @@ bool MainFrame::HandleInjectStep()
 
 void MainFrame::Exit()
 {
+    this->worker->Delete();
     this->repainter->Delete();
     this->Close(true);
 }

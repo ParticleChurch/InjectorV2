@@ -1,34 +1,6 @@
 #include "ManualMapper.hpp"
 #include <fstream>
 
-#include <iostream>
-void CreateConsole()
-{
-	if (!AttachConsole(ATTACH_PARENT_PROCESS) && !AllocConsole()) {
-		return;
-	}
-
-	// std::cout, std::clog, std::cerr, std::cin
-	FILE* fDummy;
-	freopen_s(&fDummy, "CONOUT$", "w", stdout);
-	freopen_s(&fDummy, "CONOUT$", "w", stderr);
-	freopen_s(&fDummy, "CONIN$", "r", stdin);
-	std::cout.clear();
-	std::clog.clear();
-	std::cerr.clear();
-	std::cin.clear();
-
-	// std::wcout, std::wclog, std::wcerr, std::wcin
-	HANDLE hConOut = CreateFile(L"CONOUT$", GENERIC_READ | GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
-	HANDLE hConIn = CreateFile(L"CONIN$", GENERIC_READ | GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
-	SetStdHandle(STD_OUTPUT_HANDLE, hConOut);
-	SetStdHandle(STD_ERROR_HANDLE, hConOut);
-	SetStdHandle(STD_INPUT_HANDLE, hConIn);
-	std::wcout.clear();
-	std::wclog.clear();
-	std::wcerr.clear();
-	std::wcin.clear();
-}
 
 DWORD __stdcall internalLibraryLoader(void* parameter)
 {
@@ -349,12 +321,6 @@ bool ManualMapper::ProcessBytesFromFile(BYTE* bytes, size_t nBytes)
 					bool wpm = WriteProcessMemory(this->process, remoteAddress, internalLibraryLoader, 4096 - sizeof(ManualMapperLoadData), NULL);
 					if (!wpm)
 					{
-						CreateConsole();
-						std::cout << (DWORD)this->process << std::endl;
-						std::cout << (DWORD)remoteAddress << std::endl;
-						std::cout << (DWORD)stub << std::endl;
-						std::cout << (DWORD)internalLibraryLoader << std::endl;
-						std::cout << 4096 - sizeof(ManualMapperLoadData) << std::endl;
 						this->errorCode = GetLastError();
 						this->errorContext = 8;
 						return true;
