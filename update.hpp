@@ -4,7 +4,7 @@
 #include <shlwapi.h>
 #include <fstream>
 
-#define INJECTOR_CURRENT_VERSION "1.7"
+#define INJECTOR_CURRENT_VERSION "1.8"
 #define INJECTOR_CURRENT_VERSION_STRLEN 3
 
 namespace Update

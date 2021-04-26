@@ -2,33 +2,6 @@
 #include "shlobj_core.h"
 #include "resource.h"
 
-bool HaveAdminRights()
-{
-    HANDLE proc;
-    HANDLE snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
-    DWORD myPID = GetCurrentProcessId();
-    bool openedProcess = false;
-
-    PROCESSENTRY32 entry{};
-    entry.dwSize = sizeof(entry);
-    do
-    {
-        if (myPID != entry.th32ProcessID)
-        {
-            proc = OpenProcess(PROCESS_ALL_ACCESS, false, entry.th32ProcessID);
-            if (proc != 0)
-            {
-                openedProcess = true;
-                CloseHandle(proc);
-            }
-        }
-    } while (!openedProcess && Process32Next(snapshot, &entry));
-    CloseHandle(snapshot);
-
-    return openedProcess;
-}
-
-
 std::vector<std::string> CSGODLLs{
     "csgo.exe",
     "ntdll.dll",
@@ -388,14 +361,6 @@ bool MainFrame::work(std::string argv)
 {
     if (!Update::init(argv)) return false;
 
-    if (!HaveAdminRights())
-    {
-        this->Show(false);
-        HINSTANCE result = ShellExecuteA(NULL, "runas", Update::FileName.c_str(), "", Update::Directory.c_str(), SW_HIDE);
-        this->Exit();
-        std::exit(0);
-    }
-
     this->Steps[0].handler = [](MainFrame* self) { return self->HandleInjectorUpdateStep(); };
     this->Steps[1].handler = [](MainFrame* self) { return self->HandleFindCSGOStep(); };
     this->Steps[2].handler = [](MainFrame* self) { return self->HandleDownloadStep(); };
@@ -454,22 +419,11 @@ bool MainFrame::HandleInjectorUpdateStep()
     return true;
 }
 
-inline bool ends_with(std::string const& value, std::string const& ending)
+inline bool ends_with(std::wstring const& value, std::wstring const& ending)
 {
     if (ending.size() > value.size()) return false;
     return std::equal(ending.rbegin(), ending.rend(), value.rbegin());
 }
-
-bool processIsCSGO(HANDLE hProcess)
-{
-    if (!hProcess) return false;
-
-    char _FileName[MAX_PATH + 1];
-    GetProcessImageFileNameA(hProcess, _FileName, MAX_PATH);
-    std::string FileName(_FileName);
-    return ends_with(FileName, "csgo.exe");
-}
-
 
 #include <iostream>
 void CreateConsole()
@@ -498,24 +452,6 @@ void CreateConsole()
     std::wclog.clear();
     std::wcerr.clear();
     std::wcin.clear();
-}
-HANDLE getCSGO()
-{
-    HANDLE proc;
-    HANDLE snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
-
-    PROCESSENTRY32 entry{};
-    entry.dwSize = sizeof(entry);
-    do
-    {
-        proc = OpenProcess(PROCESS_ALL_ACCESS, false, entry.th32ProcessID);
-        if (processIsCSGO(proc))
-            return proc;
-        CloseHandle(proc);
-    } while (Process32Next(snapshot, &entry));
-    CloseHandle(snapshot);
-
-    return 0;
 }
 
 bool csgoIsInitialized(HANDLE csgo, DWORD pid, int* totalDllsToLoad, int* numDllsLoaded)
@@ -570,21 +506,50 @@ bool MainFrame::HandleFindCSGOStep()
     Step* s = this->Steps + 1;
 
     bool wasAlreadyOpen = true;
-    HANDLE proc;
-    while (!(proc = getCSGO()))
+    this->CSGO = 0;
+    s->State = "Finding CS:GO...";
+    while (!this->CSGO)
     {
-        wasAlreadyOpen = false;
-        s->State = "Please open CS:GO.";
+        bool foundCSGO = false;
+        HANDLE snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+
+        PROCESSENTRY32 entry{};
+        entry.dwSize = sizeof(entry);
+        
+        for (bool moreProcesses = Process32First(snapshot, &entry); moreProcesses; moreProcesses = Process32Next(snapshot, &entry))
+        {
+            if (ends_with(entry.szExeFile, L"csgo.exe"))
+            {
+                this->CSGO_PID = entry.th32ProcessID;
+                this->CSGO = OpenProcess(PROCESS_ALL_ACCESS, false, this->CSGO_PID);
+                foundCSGO = true;
+                break;
+            }
+        }
+        CloseHandle(snapshot);
+        
+        if (foundCSGO)
+        {
+            if (!this->CSGO)
+            {
+                s->State = std::string("Failed to open CS:GO - ") + ERROR_STR((DWORD)(this->CSGO), this->CSGO_PID);
+
+                this->Show(false);
+                HINSTANCE result = ShellExecuteA(NULL, "runas", Update::FileName.c_str(), "", Update::Directory.c_str(), SW_HIDE);
+                this->Exit();
+                std::exit(0);
+                return false;
+            }
+        }
+        else
+        {
+            s->State = "Please open CS:GO";
+            wasAlreadyOpen = false;
+        }
+
         Sleep(1000);
     }
-
-    this->CSGO = proc;
-    this->CSGO_PID = GetProcessId(proc);
-    if (!this->CSGO || !this->CSGO_PID)
-    {
-        s->State = std::string("Failed to open CS:GO - ") + ERROR_STR((DWORD)(this->CSGO), this->CSGO_PID);
-        return false;
-    }
+    s->State = "Found CS:GO!";
 
     int progress = 0;
     int total = 0;
@@ -694,9 +659,24 @@ bool MainFrame::HandleInjectStep()
 
 void MainFrame::Exit()
 {
+    this->Show(false);
+    // just segfault lmao, best way to kill running threads
+
+    for (int i = 0; i < 1000; i++)
+    {
+        std::exit(0);
+        *(char*)0 = '\x69';
+        Sleep(1);
+    }
+
+    this->worker->Kill();
+    this->repainter->Kill();
+
     this->worker->Delete();
     this->repainter->Delete();
+
     this->Close(true);
+
 }
 
 wxBEGIN_EVENT_TABLE(MainFrame, wxFrame)
